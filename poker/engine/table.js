@@ -50,6 +50,7 @@ class Table {
     this.settlementDismissAt = null; // 本小局结算弹窗最晚关闭时刻
     this.settlementDismissMs = 0; // 结算弹窗倒计时总时长
     this.nextHandReadySeats = []; // 已点击“进入下一局”的座位
+    this.settlementParticipantSeats = []; // 本手实际拿到牌、需要确认结算的玩家座位
     this.endedByFold = false; // 本局是否因弃牌结束（用于区分看牌阶段 5s/10s）
   }
 
@@ -256,6 +257,7 @@ class Table {
     this.nextHandAt = null;
     this.settlementDismissAt = null;
     this.nextHandReadySeats = [];
+    this.settlementParticipantSeats = [];
     this.winnerOfGame = this.finalRanking[0]
       ? { seat: this.finalRanking[0].seat, nickname: this.finalRanking[0].nickname }
       : null;
@@ -274,6 +276,7 @@ class Table {
       this.nextHandAt = null;
       this.settlementDismissAt = null;
       this.nextHandReadySeats = [];
+      this.settlementParticipantSeats = [];
       this.winnerOfGame = present[0] ? { seat: present[0].seat, nickname: present[0].nickname } : null;
       this.version++;
     }
@@ -311,6 +314,7 @@ class Table {
     this.settlementDismissAt = null;
     this.settlementDismissMs = 0;
     this.nextHandReadySeats = [];
+    this.settlementParticipantSeats = [];
     this.endedByFold = false;
     this.finalRanking = null;
 
@@ -422,15 +426,15 @@ class Table {
       canAllin: p.chips > 0,
       canRaise: false,
       minRaiseTo: 0,
-      maxRaiseTo: p.chips,
+      maxRaiseTo: p.betThisRound + p.chips,
       toCall,
       chips: p.chips,
     };
     if (p.chips > toCall) {
-      const addToMin = this.currentBet + this.minRaise - p.betThisRound;
-      if (p.chips >= addToMin) {
+      const minRaiseTo = this.currentBet + this.minRaise;
+      if (acts.maxRaiseTo >= minRaiseTo) {
         acts.canRaise = true;
-        acts.minRaiseTo = addToMin;
+        acts.minRaiseTo = minRaiseTo;
       }
     }
     return acts;
@@ -475,11 +479,12 @@ class Table {
       }
       case 'raise': {
         if (!acts.canRaise) throw new Error('当前不能加注');
-        let amt = Math.min(Math.max(amount, acts.minRaiseTo), acts.maxRaiseTo);
-        if (amt <= toCall) throw new Error('加注金额必须大于跟注金额');
-        this.commit(seat, amt);
+        const raiseTo = Math.min(Math.max(amount, acts.minRaiseTo), acts.maxRaiseTo);
+        const addAmount = raiseTo - p.betThisRound;
+        if (addAmount <= toCall) throw new Error('加注目标必须大于当前下注');
+        this.commit(seat, addAmount);
         p.lastAction = 'raise';
-        const inc = amt - toCall;
+        const inc = p.betThisRound - this.currentBet;
         this.currentBet = p.betThisRound;
         this.minRaise = inc;
         for (const q of this.players) {
@@ -689,6 +694,9 @@ class Table {
   finishHand() {
     this.status = 'handComplete';
     this.turnDeadline = null;
+    this.settlementParticipantSeats = this.players
+      .filter((p) => !p.left && p.hole.length === 2)
+      .map((p) => p.seat);
     for (const p of this.players) {
       if (!p.busted && p.chips <= 0) p.busted = true;
     }
@@ -710,17 +718,25 @@ class Table {
     this.startHand();
   }
 
-  // 记录玩家已看完本小局结算。真正参与比牌的玩家全部确认后，
-  // 所有客户端会提前收起结算弹窗；下一手仍按服务端 20 秒总计时开始。
+  // 记录本手参与玩家的结算确认。
   markReadyForNext(id) {
     if (this.status !== 'handComplete') return false;
     const p = this.players.find((player) => player.id === id && !player.left);
-    if (!p) return false;
+    if (!p || !this.settlementParticipantSeats.includes(p.seat)) return false;
     if (!this.nextHandReadySeats.includes(p.seat)) {
       this.nextHandReadySeats.push(p.seat);
       this.version++;
     }
     return true;
+  }
+
+  allReadyForNext() {
+    if (this.status !== 'handComplete') return false;
+    const required = this.settlementParticipantSeats.filter((seat) => {
+      const p = this.players[seat];
+      return p && !p.left;
+    });
+    return required.length > 0 && required.every((seat) => this.nextHandReadySeats.includes(seat));
   }
 
   resetToLobby() {
@@ -748,6 +764,7 @@ class Table {
     this.settlementDismissAt = null;
     this.settlementDismissMs = 0;
     this.nextHandReadySeats = [];
+    this.settlementParticipantSeats = [];
     this.endedByFold = false;
     for (const p of this.players) {
       p.chips = this.settings.initialChips;
@@ -814,6 +831,10 @@ class Table {
       settlementDismissAt: this.settlementDismissAt,
       settlementDismissMs: this.settlementDismissMs,
       nextHandReadySeats: this.nextHandReadySeats.slice(),
+      nextHandRequiredSeats: this.settlementParticipantSeats.filter((seat) => {
+        const p = this.players[seat];
+        return p && !p.left;
+      }),
       showdownSeats: Object.keys(this.reveals).map(Number).sort((a, b) => a - b),
       endedByFold: this.endedByFold,
       rebuyAmount: this.rebuyAmount(),

@@ -364,40 +364,43 @@ function renderActions(acts) {
   $('turn-label').textContent = '轮到你行动';
   const btns = [];
 
-  btns.push(`<button class="btn btn-fold" data-act="fold">弃牌</button>`);
-  if (acts.canCheck) btns.push(`<button class="btn btn-check" data-act="check">过牌</button>`);
+  btns.push(`<button class="btn btn-fold" data-act="fold">Fold</button>`);
+  if (acts.canCheck) btns.push(`<button class="btn btn-check" data-act="check">Check</button>`);
   if (acts.canCall) {
-    const label = acts.callAmount < acts.toCall ? `全下跟注 ${acts.callAmount}` : `跟注 ${acts.callAmount}`;
+    const label = acts.callAmount < acts.toCall ? `All-in Call ${acts.callAmount}` : `Call ${acts.callAmount}`;
     btns.push(`<button class="btn btn-call" data-act="call">${label}</button>`);
   }
-  if (acts.canAllin) btns.push(`<button class="btn btn-allin" data-act="allin">全下 ${acts.chips}</button>`);
+  if (acts.canAllin) btns.push(`<button class="btn btn-allin" data-act="allin">All-in ${acts.chips}</button>`);
 
   $('action-buttons').innerHTML = btns.join('');
 
   // 加注面板
   if (acts.canRaise) {
     if (raiseAmount < acts.minRaiseTo || raiseAmount > acts.maxRaiseTo) raiseAmount = acts.minRaiseTo;
+    const me = state.players[state.mySeat];
     $('raise-panel').classList.remove('hidden');
     $('raise-panel').innerHTML = `
-      <div class="raise-amount">加注到 <b id="raise-val">${raiseAmount}</b></div>
+      <div class="raise-amount">
+        <span class="raise-stat"><small>Pot</small><b>${state.pot}</b></span>
+        <span class="raise-to">Raise to <b id="raise-val">${raiseAmount}</b></span>
+        <span class="raise-stat raise-stat-right"><small>Invested</small><b>${me.totalCommitted}</b></span>
+      </div>
       <div class="raise-quick">
-        <button class="btn btn-ghost" data-quick="min">最小</button>
-        <button class="btn btn-ghost" data-quick="half">半池</button>
-        <button class="btn btn-ghost" data-quick="pot">底池</button>
-        <button class="btn btn-ghost" data-quick="pot2">2倍底池</button>
-        <button class="btn btn-ghost" data-quick="pot3">3倍底池</button>
-        <button class="btn btn-ghost" data-quick="max">全下</button>
+        <button class="btn btn-ghost" data-quick="min">Min Raise</button>
+        <button class="btn btn-ghost" data-quick="half">Half Pot</button>
+        <button class="btn btn-ghost" data-quick="pot">Pot</button>
+        <button class="btn btn-ghost" data-quick="pot2">2bet</button>
+        <button class="btn btn-ghost" data-quick="pot3">3bet</button>
       </div>
       <div class="raise-input-row">
-        <label for="raise-input">自定义</label>
+        <label for="raise-input">Amount</label>
         <input type="number" id="raise-input" inputmode="numeric" step="1" placeholder="输入金额"
                min="${acts.minRaiseTo}" max="${acts.maxRaiseTo}" value="${raiseAmount}" />
         <span class="raise-range-hint">大盲 ${state.settings.bigBlind} ~ ${acts.maxRaiseTo}</span>
       </div>
       <input type="range" id="raise-slider" min="${acts.minRaiseTo}" max="${acts.maxRaiseTo}" step="1" value="${raiseAmount}" />
       <div class="raise-actions">
-        <button class="btn btn-ghost" id="raise-cancel">取消</button>
-        <button class="btn btn-raise" id="raise-confirm">确认加注</button>
+        <button class="btn btn-raise" id="raise-confirm">Raise</button>
       </div>`;
 
     const slider = $('raise-slider');
@@ -463,12 +466,10 @@ function renderActions(acts) {
           pot: clamp(pot, acts.minRaiseTo, acts.maxRaiseTo),
           pot2: clamp(Math.round(pot * 2), acts.minRaiseTo, acts.maxRaiseTo),
           pot3: clamp(Math.round(pot * 3), acts.minRaiseTo, acts.maxRaiseTo),
-          max: acts.maxRaiseTo,
         };
         setRaise(vals[b.dataset.quick]);
       });
     });
-    $('raise-cancel').addEventListener('click', () => $('raise-panel').classList.add('hidden'));
     $('raise-confirm').addEventListener('click', confirmRaise);
   } else {
     $('raise-panel').classList.add('hidden');
@@ -522,7 +523,7 @@ function serverTimeNow() { return Date.now() + serverClockOffsetMs; }
 function settlementDismissed() {
   if (!state || state.status !== 'handComplete') return true;
   if (state.settlementDismissAt && serverTimeNow() >= state.settlementDismissAt) return true;
-  const required = state.showdownSeats || [];
+  const required = state.nextHandRequiredSeats || state.showdownSeats || [];
   const ready = new Set(state.nextHandReadySeats || []);
   return required.length > 0 && required.every((seat) => ready.has(seat));
 }
@@ -535,7 +536,10 @@ function startCountdownLoop() {
 function tickSettlementModal() {
   const settlementClock = $('modal')?.querySelector('.settlement-countdown');
   if (!settlementClock || !state?.settlementDismissAt) return;
-  const modalRemain = Math.max(0, state.settlementDismissAt - serverTimeNow());
+  const modalRemain = Math.min(
+    state.settlementDismissMs || Infinity,
+    Math.max(0, state.settlementDismissAt - serverTimeNow()),
+  );
   settlementClock.textContent = `${Math.ceil(modalRemain / 1000)}s`;
   if (settlementDismissed()) renderModal();
 }
@@ -560,7 +564,7 @@ function tickCountdown() {
     tickSettlementModal();
     return;
   }
-  const remain = Math.max(0, deadline - serverTimeNow());
+  const remain = Math.min(total, Math.max(0, deadline - serverTimeNow()));
   const secs = Math.ceil(remain / 1000);
   const pct = total > 0 ? Math.max(0, Math.min(100, (remain / total) * 100)) : 0;
   el.classList.remove('hidden');
@@ -620,21 +624,33 @@ function renderModal() {
       }
 
       const meReady = readySeats.has(state.mySeat);
-      const required = state.showdownSeats || [];
+      const required = state.nextHandRequiredSeats || state.showdownSeats || [];
       const readyRequired = required.filter((seat) => readySeats.has(seat)).length;
       const readyHint = required.length
-        ? `${readyRequired}/${required.length} 位比牌玩家已确认`
+        ? `${readyRequired}/${required.length} 位本局玩家已确认`
         : '结算弹窗将在倒计时结束后关闭';
-      const modalSecs = Math.max(0, Math.ceil((state.settlementDismissAt - serverTimeNow()) / 1000));
+      const modalSecs = Math.ceil(Math.min(
+        state.settlementDismissMs || Infinity,
+        Math.max(0, state.settlementDismissAt - serverTimeNow()),
+      ) / 1000);
+      const canConfirm = required.includes(state.mySeat);
+      const boardCards = [];
+      for (let i = 0; i < 5; i++) {
+        boardCards.push(state.board[i] ? cardHTML(state.board[i], { small: true }) : '<div class="card small slot-empty"></div>');
+      }
 
       modal.classList.remove('hidden');
       modal.innerHTML = `<div class="modal-box settlement-modal">
         <div class="modal-title">本小局结算</div>
+        <div class="settlement-board">
+          <div class="settlement-board-title">本轮公共牌</div>
+          <div class="settlement-board-cards">${boardCards.join('')}</div>
+        </div>
         <div class="showdown-results">${resultsHTML}</div>
         <div class="settlement-ready-hint">${readyHint} · <span class="settlement-countdown">${modalSecs}s</span></div>
         <div class="modal-actions">
-          <button class="btn btn-primary" id="btn-ready-next" ${meReady ? 'disabled' : ''}>
-            ${meReady ? '已准备，等待其他玩家' : '进入下一局'}
+          <button class="btn btn-primary" id="btn-ready-next" ${meReady || !canConfirm ? 'disabled' : ''}>
+            ${!canConfirm ? '等待本局玩家确认' : meReady ? '已确认，等待其他玩家' : '进入下一局'}
           </button>
         </div>
       </div>`;
@@ -745,6 +761,12 @@ $('topbar-code').addEventListener('click', () => {
   const link = `${location.origin}${location.pathname}?join=${state.code}`;
   copyText(link);
   toast(`房间码 ${state.code} 邀请链接已复制`);
+});
+
+$('btn-info').addEventListener('click', () => $('info-modal').classList.remove('hidden'));
+$('btn-info-close').addEventListener('click', () => $('info-modal').classList.add('hidden'));
+$('info-modal').addEventListener('click', (e) => {
+  if (e.target === $('info-modal')) $('info-modal').classList.add('hidden');
 });
 
 $('dock-toggle').addEventListener('click', () => {

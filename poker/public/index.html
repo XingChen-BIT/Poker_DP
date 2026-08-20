@@ -15,6 +15,7 @@
     <div id="topbar-status" class="topbar-status"></div>
     <button id="btn-terminate" class="btn btn-ghost btn-terminate hidden">终止牌局</button>
     <button id="btn-leave" class="btn btn-ghost">离开牌桌</button>
+    <button id="btn-info" class="btn-info" aria-label="德州扑克规则与术语" title="德州扑克规则与术语">i</button>
   </header>
 
   <!-- 入口页 -->
@@ -111,7 +112,6 @@
       <div id="table">
         <div id="table-ring">
           <div id="board-area">
-            <div id="pot" class="pot"></div>
             <div id="community" class="community"></div>
           </div>
           <div id="seats"></div>
@@ -122,6 +122,7 @@
         <div class="countdown-bar"><div class="countdown-fill"></div></div>
         <div class="countdown-secs"></div>
       </div>
+      <div id="pot" class="pot pot-floating"></div>
       <div id="result-banner" class="result-banner hidden"></div>
       <div id="stats-panel" class="stats-panel"></div>
     </div>
@@ -145,6 +146,63 @@
 
   <div id="toast" class="toast hidden"></div>
   <div id="modal" class="modal hidden"></div>
+  <div id="info-modal" class="modal hidden">
+    <div class="modal-box info-modal-box">
+      <button id="btn-info-close" class="info-close" aria-label="关闭规则说明">×</button>
+      <div class="modal-title">德州扑克规则与术语</div>
+
+      <section class="info-section">
+        <h3>基本规则</h3>
+        <ol>
+          <li>每位玩家获得 2 张底牌，牌桌依次发出 5 张公共牌。</li>
+          <li>下注轮次依次为翻牌前（Pre-flop）、翻牌（Flop）、转牌（Turn）和河牌（River）。</li>
+          <li>玩家用自己的底牌与公共牌共 7 张牌，选出最强的 5 张组合比牌；也可以只使用其中 1 张或不使用底牌。</li>
+          <li>所有其他玩家弃牌时，最后未弃牌者直接赢得底池；多人坚持到最后则进入摊牌（Showdown）。</li>
+          <li>全下金额不同会形成边池，玩家只能赢取自己有资格参与的底池。</li>
+        </ol>
+      </section>
+
+      <section class="info-section">
+        <h3>牌型大小（由强到弱）</h3>
+        <div class="hand-rank-grid">
+          <span>皇家同花顺</span><span>Royal Flush</span>
+          <span>同花顺</span><span>Straight Flush</span>
+          <span>四条</span><span>Four of a Kind</span>
+          <span>葫芦</span><span>Full House</span>
+          <span>同花</span><span>Flush</span>
+          <span>顺子</span><span>Straight</span>
+          <span>三条</span><span>Three of a Kind</span>
+          <span>两对</span><span>Two Pair</span>
+          <span>一对</span><span>One Pair</span>
+          <span>高牌</span><span>High Card</span>
+        </div>
+      </section>
+
+      <section class="info-section">
+        <h3>常用术语中英文对照</h3>
+        <div class="terms-table">
+          <div><b>Fold</b><span>弃牌</span></div>
+          <div><b>Check</b><span>过牌</span></div>
+          <div><b>Call</b><span>跟注</span></div>
+          <div><b>Raise</b><span>加注</span></div>
+          <div><b>Min Raise</b><span>最小加注</span></div>
+          <div><b>All-in</b><span>全下</span></div>
+          <div><b>Half Pot</b><span>半池下注</span></div>
+          <div><b>Pot</b><span>底池 / 满池下注</span></div>
+          <div><b>Bet</b><span>下注</span></div>
+          <div><b>2-bet</b><span>一轮中的首次加注</span></div>
+          <div><b>3-bet</b><span>对首次加注的再加注</span></div>
+          <div><b>Blinds</b><span>盲注</span></div>
+          <div><b>Button</b><span>庄家位</span></div>
+          <div><b>Hole Cards</b><span>玩家底牌</span></div>
+          <div><b>Community Cards</b><span>公共牌</span></div>
+          <div><b>Pot</b><span>底池</span></div>
+          <div><b>Side Pot</b><span>边池</span></div>
+          <div><b>Showdown</b><span>摊牌 / 比牌</span></div>
+        </div>
+      </section>
+    </div>
+  </div>
   <div id="confirm-modal" class="modal hidden">
     <div class="modal-box modal-box-sm">
       <div class="modal-title" id="confirm-title">确认</div>

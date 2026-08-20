@@ -12,7 +12,7 @@ const TURN_TIMEOUT_MS = 40000; // 每位玩家行动限时（40 秒）
 const NEXT_HAND_FOLD_MS = 20000; // 弃牌结束后，本小局结算总展示时间（20 秒）
 const NEXT_HAND_SHOWDOWN_MS = 20000; // 比牌结束后，本小局结算总展示时间（20 秒）
 const SETTLEMENT_MODAL_MS = 15000; // 结算弹窗最长显示时间（15 秒）
-const KICK_DISCONNECTED_MS = 5 * 60 * 1000; // 掉线超过 5 分钟自动踢出
+const KICK_DISCONNECTED_MS = 3 * 60 * 1000; // 掉线超过 3 分钟自动踢出
 
 const app = express();
 const server = http.createServer(app);
@@ -28,6 +28,7 @@ const socketInfo = new Map(); // socket.id -> { code, playerId }
 const playerSocket = new Map(); // `${code}:${playerId}` -> socket.id
 const turnTimers = new Map(); // code -> timeout handle（行动倒计时）
 const nextHandTimers = new Map(); // code -> timeout handle（看牌阶段倒计时）
+const settlementTimers = new Map(); // code -> timeout handle（结算弹窗 15 秒倒计时）
 
 // 生成 6 位房间码（去掉易混淆字符）
 function genCode() {
@@ -94,6 +95,11 @@ function cancelNextHand(code) {
     clearTimeout(t);
     nextHandTimers.delete(code);
   }
+  const settlementTimer = settlementTimers.get(code);
+  if (settlementTimer) {
+    clearTimeout(settlementTimer);
+    settlementTimers.delete(code);
+  }
   const table = rooms.get(code);
   if (table) {
     table.nextHandAt = null;
@@ -104,7 +110,7 @@ function cancelNextHand(code) {
   }
 }
 
-// 本局结束后的「看牌阶段」倒计时：到点自动进入下一局
+// 本局结束后的结算倒计时：未全员确认时，到点自动进入下一局。
 function scheduleNextHand(code) {
   const table = rooms.get(code);
   if (!table || table.status !== 'handComplete') return;
@@ -113,6 +119,14 @@ function scheduleNextHand(code) {
     table.settlementDismissAt = Date.now() + SETTLEMENT_MODAL_MS;
     table.settlementDismissMs = SETTLEMENT_MODAL_MS;
     table.nextHandReadySeats = [];
+    const settlementTimer = setTimeout(() => {
+      settlementTimers.delete(code);
+      const tbl = rooms.get(code);
+      if (!tbl || tbl.status !== 'handComplete') return;
+      tbl.settlementDismissAt = Date.now();
+      broadcast(tbl);
+    }, SETTLEMENT_MODAL_MS);
+    settlementTimers.set(code, settlementTimer);
   }
   if (table.activeCount() < 2) return; // 等玩家补充筹码 / 新玩家加入
   if (table.nextHandAt) return; // 已在倒计时中，不受新玩家加入影响
@@ -135,6 +149,16 @@ function scheduleNextHand(code) {
   nextHandTimers.set(code, t);
 }
 
+// 本手所有仍在桌的参与者都确认后，立即取消剩余结算时间并发下一手。
+function advanceIfEveryoneReady(code) {
+  const table = rooms.get(code);
+  if (!table || table.status !== 'handComplete' || !table.allReadyForNext()) return false;
+  if (table.activeCount() < 2) return false;
+  cancelNextHand(code);
+  table.nextHand();
+  return true;
+}
+
 function promoteHost(table, leavingPlayerId) {
   if (table.hostId !== leavingPlayerId) return;
   const candidates = table.players.filter((p) => p.id !== leavingPlayerId && !p.left);
@@ -152,11 +176,12 @@ function maybeDeleteRoom(code) {
   }
 }
 
-// 统一收尾：终局判定 → 看牌阶段倒计时 → 广播 → 行动倒计时 → 房间回收
+// 统一收尾：终局判定 → 全员确认快速开局 → 结算倒计时 → 广播 → 行动倒计时 → 房间回收
 function sync(code) {
   const table = rooms.get(code);
   if (!table) return;
   table.checkGameOver();
+  advanceIfEveryoneReady(code);
   scheduleNextHand(code);
   broadcast(table);
   armTimer(code);
@@ -184,9 +209,9 @@ io.on('connection', (socket) => {
       playerSocket.set(`${code}:${playerId}`, socket.id);
       socket.join(code);
       broadcast(table);
-      cb({ ok: true, code, playerId });
+      cb?.({ ok: true, code, playerId });
     } catch (e) {
-      cb({ ok: false, error: e.message });
+      cb?.({ ok: false, error: e.message });
     }
   });
 
@@ -195,16 +220,16 @@ io.on('connection', (socket) => {
       const code = String(data?.code || '').trim().toUpperCase();
       const nickname = String(data?.nickname || '').trim() || '玩家';
       const table = rooms.get(code);
-      if (!table) return cb({ ok: false, error: '房间不存在，请检查房间码' });
+      if (!table) return cb?.({ ok: false, error: '房间不存在，请检查房间码' });
       const playerId = `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
       table.addPlayer(playerId, nickname);
       socketInfo.set(socket.id, { code, playerId });
       playerSocket.set(`${code}:${playerId}`, socket.id);
       socket.join(code);
       sync(code);
-      cb({ ok: true, code, playerId });
+      cb?.({ ok: true, code, playerId });
     } catch (e) {
-      cb({ ok: false, error: e.message });
+      cb?.({ ok: false, error: e.message });
     }
   });
 
@@ -214,17 +239,17 @@ io.on('connection', (socket) => {
       const code = String(data?.code || '').trim().toUpperCase();
       const playerId = String(data?.playerId || '');
       const table = rooms.get(code);
-      if (!table) return cb({ ok: false, error: '房间已不存在' });
+      if (!table) return cb?.({ ok: false, error: '房间已不存在' });
       const player = table.players.find((p) => p.id === playerId);
-      if (!player || player.left) return cb({ ok: false, error: '座位已释放，请重新加入' });
+      if (!player || player.left) return cb?.({ ok: false, error: '座位已释放，请重新加入' });
       socketInfo.set(socket.id, { code, playerId });
       playerSocket.set(`${code}:${playerId}`, socket.id);
       socket.join(code);
       table.setConnected(playerId, true);
       sync(code);
-      cb({ ok: true, code, playerId });
+      cb?.({ ok: true, code, playerId });
     } catch (e) {
-      cb({ ok: false, error: e.message });
+      cb?.({ ok: false, error: e.message });
     }
   });
 
@@ -245,10 +270,11 @@ io.on('connection', (socket) => {
     if (!r) return cb?.({ ok: false, error: '未加入房间' });
     const { table, info } = r;
     if (!table.markReadyForNext(info.playerId)) {
-      return cb?.({ ok: false, error: '当前不能进入下一局' });
+      return cb?.({ ok: false, error: '你不是本手参与玩家，或当前不能确认' });
     }
-    broadcast(table);
-    cb?.({ ok: true });
+    const willAdvance = table.allReadyForNext() && table.activeCount() >= 2;
+    sync(table.code);
+    cb?.({ ok: true, advanced: willAdvance });
   };
 
   // room:next 保留为旧客户端兼容事件；新客户端使用语义更明确的 ready-next。

@@ -187,6 +187,22 @@ test('单挑开局：盲注、行动顺序、弃牌赢池', () => {
   assert.strictEqual(t.winners[0].amount, 15);
 });
 
+test('加注金额使用标准 Raise to 目标总额语义', () => {
+  const t = new Table({ code: 'T', hostId: 'a', settings: { initialChips: 1000, smallBlind: 5, bigBlind: 10 }, rng: () => 0 });
+  t.addPlayer('a', 'A');
+  t.addPlayer('b', 'B');
+  t.startHand();
+  const seat = t.currentActorSeat;
+  const p = t.players[seat];
+  assert.strictEqual(p.betThisRound, 5);
+  const actions = t.availableActions(seat);
+  assert.strictEqual(actions.minRaiseTo, 20);
+  t.applyAction(seat, 'raise', 20);
+  assert.strictEqual(p.betThisRound, 20);
+  assert.strictEqual(t.currentBet, 20);
+  assert.strictEqual(p.chips, 980);
+});
+
 test('盲注座位：3 人 SB/BB 顺序', () => {
   const t = makeTable();
   t.dealerSeat = 0;
@@ -244,9 +260,13 @@ test('结算确认会记录玩家座位并公开比牌参与者', () => {
   assert.ok(t.markReadyForNext('a'));
   assert.ok(t.markReadyForNext('b'));
   assert.deepStrictEqual(t.nextHandReadySeats, [0, 1]);
+  assert.strictEqual(t.allReadyForNext(), false);
   const view = t.toPublicState('a');
   assert.deepStrictEqual(view.showdownSeats, [0, 1, 2]);
   assert.deepStrictEqual(view.nextHandReadySeats, [0, 1]);
+  assert.deepStrictEqual(view.nextHandRequiredSeats, [0, 1, 2]);
+  assert.ok(t.markReadyForNext('c'));
+  assert.strictEqual(t.allReadyForNext(), true);
 });
 
 test('亮牌结算公开参与比牌者的两张手牌与最大五张牌', () => {
