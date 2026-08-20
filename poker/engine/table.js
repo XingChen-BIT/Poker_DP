@@ -51,7 +51,7 @@ class Table {
     this.settlementDismissMs = 0; // 结算弹窗倒计时总时长
     this.nextHandReadySeats = []; // 已点击“进入下一局”的座位
     this.settlementParticipantSeats = []; // 本手实际拿到牌、需要确认结算的玩家座位
-    this.endedByFold = false; // 本局是否因弃牌结束（用于区分看牌阶段 5s/10s）
+    this.endedByFold = false; // 本局是否因弃牌结束（用于结算提示）
   }
 
   // ---------------- 工具 ----------------
@@ -734,7 +734,7 @@ class Table {
     if (this.status !== 'handComplete') return false;
     const required = this.settlementParticipantSeats.filter((seat) => {
       const p = this.players[seat];
-      return p && !p.left;
+      return p && !p.left && p.connected;
     });
     return required.length > 0 && required.every((seat) => this.nextHandReadySeats.includes(seat));
   }
@@ -833,7 +833,7 @@ class Table {
       nextHandReadySeats: this.nextHandReadySeats.slice(),
       nextHandRequiredSeats: this.settlementParticipantSeats.filter((seat) => {
         const p = this.players[seat];
-        return p && !p.left;
+        return p && !p.left && p.connected;
       }),
       showdownSeats: Object.keys(this.reveals).map(Number).sort((a, b) => a - b),
       endedByFold: this.endedByFold,

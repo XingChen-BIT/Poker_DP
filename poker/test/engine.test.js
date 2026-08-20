@@ -265,6 +265,11 @@ test('结算确认会记录玩家座位并公开比牌参与者', () => {
   assert.deepStrictEqual(view.showdownSeats, [0, 1, 2]);
   assert.deepStrictEqual(view.nextHandReadySeats, [0, 1]);
   assert.deepStrictEqual(view.nextHandRequiredSeats, [0, 1, 2]);
+  t.setConnected('c', false);
+  assert.strictEqual(t.allReadyForNext(), true, '掉线玩家不应阻塞下一局');
+  assert.deepStrictEqual(t.toPublicState('a').nextHandRequiredSeats, [0, 1]);
+  t.setConnected('c', true);
+  assert.strictEqual(t.allReadyForNext(), false);
   assert.ok(t.markReadyForNext('c'));
   assert.strictEqual(t.allReadyForNext(), true);
 });

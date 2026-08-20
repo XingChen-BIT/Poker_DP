@@ -557,7 +557,7 @@ function tickCountdown() {
   } else if (state.status === 'handComplete' && state.nextHandAt && state.nextHandMs) {
     deadline = state.nextHandAt;
     total = state.nextHandMs;
-    label = state.endedByFold ? '全部弃牌，即将开始下一局' : '看牌阶段，即将开始下一局';
+    label = state.endedByFold ? '本局结束，即将开始下一局' : '结算中，即将开始下一局';
   }
   if (!deadline) {
     el.classList.add('hidden');
@@ -682,7 +682,7 @@ function renderModal() {
     return;
   }
 
-  // 本局结算弹窗已由全员确认或 15 秒倒计时关闭；保留顶部简要结果至 20 秒结束。
+  // 本局结算弹窗已由在线玩家全员确认或 15 秒倒计时关闭，随后直接进入下一局。
   if (state.status === 'handComplete') {
     modal.classList.add('hidden');
     return;

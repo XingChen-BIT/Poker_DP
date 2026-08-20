@@ -9,8 +9,8 @@ const { Table, MAX_PLAYERS } = require('./engine/table');
 const PORT = process.env.PORT || 3000;
 // ===== 时间配置（以后需要调整倒计时时，修改这里即可） =====
 const TURN_TIMEOUT_MS = 40000; // 每位玩家行动限时（40 秒）
-const NEXT_HAND_FOLD_MS = 20000; // 弃牌结束后，本小局结算总展示时间（20 秒）
-const NEXT_HAND_SHOWDOWN_MS = 20000; // 比牌结束后，本小局结算总展示时间（20 秒）
+const NEXT_HAND_FOLD_MS = 15000; // 与结算弹窗同步，不再额外保留看牌阶段
+const NEXT_HAND_SHOWDOWN_MS = 15000; // 与结算弹窗同步，不再额外保留看牌阶段
 const SETTLEMENT_MODAL_MS = 15000; // 结算弹窗最长显示时间（15 秒）
 const KICK_DISCONNECTED_MS = 3 * 60 * 1000; // 掉线超过 3 分钟自动踢出
 
@@ -27,7 +27,7 @@ const rooms = new Map(); // code -> Table
 const socketInfo = new Map(); // socket.id -> { code, playerId }
 const playerSocket = new Map(); // `${code}:${playerId}` -> socket.id
 const turnTimers = new Map(); // code -> timeout handle（行动倒计时）
-const nextHandTimers = new Map(); // code -> timeout handle（看牌阶段倒计时）
+const nextHandTimers = new Map(); // code -> timeout handle（结算后自动开局倒计时）
 const settlementTimers = new Map(); // code -> timeout handle（结算弹窗 15 秒倒计时）
 
 // 生成 6 位房间码（去掉易混淆字符）
@@ -378,7 +378,8 @@ io.on('connection', (socket) => {
       if (player) {
         table.setConnected(info.playerId, false);
         promoteHost(table, info.playerId);
-        broadcast(table);
+        // 结算期间掉线者不再阻塞确认；重新走同步流程可立即检查是否已满足开下一手条件。
+        sync(info.code);
       }
     }
     maybeDeleteRoom(info.code);
