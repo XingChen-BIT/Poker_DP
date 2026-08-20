@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: poker-room
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    autoDeploy: true

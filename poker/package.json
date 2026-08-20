@@ -1,0 +1,17 @@
+{
+  "name": "poker-room",
+  "version": "1.0.0",
+  "description": "多人德州扑克小游戏 - 支持 2~10 人实时对战（Node.js + Socket.io）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/engine.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
