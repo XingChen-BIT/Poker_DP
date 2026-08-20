@@ -197,10 +197,16 @@ test('加注金额使用标准 Raise to 目标总额语义', () => {
   assert.strictEqual(p.betThisRound, 5);
   const actions = t.availableActions(seat);
   assert.strictEqual(actions.minRaiseTo, 20);
+  assert.strictEqual(t.lastRaiseSeat, -1);
   t.applyAction(seat, 'raise', 20);
   assert.strictEqual(p.betThisRound, 20);
   assert.strictEqual(t.currentBet, 20);
   assert.strictEqual(p.chips, 980);
+  assert.strictEqual(t.lastRaiseSeat, seat);
+  assert.strictEqual(t.lastRaiseTo, 20);
+  const view = t.toPublicState(t.players[t.currentActorSeat].id);
+  assert.strictEqual(view.lastRaiseSeat, seat);
+  assert.strictEqual(view.lastRaiseTo, 20);
 });
 
 test('盲注座位：3 人 SB/BB 顺序', () => {

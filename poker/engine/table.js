@@ -35,6 +35,8 @@ class Table {
     this.street = null;
     this.currentBet = 0;
     this.minRaise = 0;
+    this.lastRaiseSeat = -1; // 当前下注轮次最近一次加注者
+    this.lastRaiseTo = 0; // 当前下注轮次最近一次加注到的总额
     this.currentActorSeat = -1;
     this.winners = []; // [{ seat, nickname, desc, amount }]
     this.reveals = {}; // seat -> { desc, hole, bestFive }（实际参与比牌者的亮牌结果）
@@ -307,6 +309,8 @@ class Table {
     this.revealMode = false;
     this.log = [];
     this.streetActions = [];
+    this.lastRaiseSeat = -1;
+    this.lastRaiseTo = 0;
     this.street = 'preflop';
     this.status = 'playing';
     this.nextHandAt = null;
@@ -487,6 +491,8 @@ class Table {
         const inc = p.betThisRound - this.currentBet;
         this.currentBet = p.betThisRound;
         this.minRaise = inc;
+        this.lastRaiseSeat = seat;
+        this.lastRaiseTo = p.betThisRound;
         for (const q of this.players) {
           if (q !== p && !q.folded && !q.allIn && !q.busted && !q.sittingOut && !q.left) q.pending = true;
         }
@@ -503,6 +509,8 @@ class Table {
         if (p.betThisRound > this.currentBet) {
           const inc = p.betThisRound - this.currentBet;
           this.currentBet = p.betThisRound;
+          this.lastRaiseSeat = seat;
+          this.lastRaiseTo = p.betThisRound;
           if (inc >= this.minRaise) this.minRaise = inc;
           for (const q of this.players) {
             if (q !== p && !q.folded && !q.allIn && !q.busted && !q.sittingOut && !q.left) q.pending = true;
@@ -579,6 +587,8 @@ class Table {
 
     // 进入新一轮下注：清空本轮下注记录条，仅显示当前轮次的下注情况
     this.streetActions = [];
+    this.lastRaiseSeat = -1;
+    this.lastRaiseTo = 0;
 
     // 新一轮下注：重置每轮下注额，公共牌后由庄家左手第一位活跃玩家先行动
     this.currentBet = 0;
@@ -755,6 +765,8 @@ class Table {
     this.street = null;
     this.currentBet = 0;
     this.minRaise = 0;
+    this.lastRaiseSeat = -1;
+    this.lastRaiseTo = 0;
     this.currentActorSeat = -1;
     this.winnerOfGame = null;
     this.finalRanking = null;
@@ -815,6 +827,8 @@ class Table {
       bigBlindSeat: this.computeBlindSeats().bb,
       currentBet: this.currentBet,
       minRaise: this.minRaise,
+      lastRaiseSeat: this.lastRaiseSeat,
+      lastRaiseTo: this.lastRaiseTo,
       currentActorSeat: this.currentActorSeat,
       pot: this.totalPot(),
       board: this.board,

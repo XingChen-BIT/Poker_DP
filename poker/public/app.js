@@ -378,6 +378,9 @@ function renderActions(acts) {
   if (acts.canRaise) {
     if (raiseAmount < acts.minRaiseTo || raiseAmount > acts.maxRaiseTo) raiseAmount = acts.minRaiseTo;
     const me = state.players[state.mySeat];
+    const hasOpponentRaise = state.lastRaiseSeat >= 0 &&
+      state.lastRaiseSeat !== state.mySeat && state.lastRaiseTo > 0;
+    const opponentRaiseDisabled = hasOpponentRaise ? '' : 'disabled';
     $('raise-panel').classList.remove('hidden');
     $('raise-panel').innerHTML = `
       <div class="raise-amount">
@@ -389,8 +392,8 @@ function renderActions(acts) {
         <button class="btn btn-ghost" data-quick="min">Min Raise</button>
         <button class="btn btn-ghost" data-quick="half">Half Pot</button>
         <button class="btn btn-ghost" data-quick="pot">Pot</button>
-        <button class="btn btn-ghost" data-quick="pot2">2bet</button>
-        <button class="btn btn-ghost" data-quick="pot3">3bet</button>
+        <button class="btn btn-ghost" data-quick="raise2" ${opponentRaiseDisabled} title="对手上次加注到总额的2倍">2× Last Raise</button>
+        <button class="btn btn-ghost" data-quick="raise3" ${opponentRaiseDisabled} title="对手上次加注到总额的3倍">3× Last Raise</button>
       </div>
       <div class="raise-input-row">
         <label for="raise-input">Amount</label>
@@ -464,8 +467,8 @@ function renderActions(acts) {
           min: acts.minRaiseTo,
           half: clamp(Math.round(pot / 2), acts.minRaiseTo, acts.maxRaiseTo),
           pot: clamp(pot, acts.minRaiseTo, acts.maxRaiseTo),
-          pot2: clamp(Math.round(pot * 2), acts.minRaiseTo, acts.maxRaiseTo),
-          pot3: clamp(Math.round(pot * 3), acts.minRaiseTo, acts.maxRaiseTo),
+          raise2: clamp(Math.round(state.lastRaiseTo * 2), acts.minRaiseTo, acts.maxRaiseTo),
+          raise3: clamp(Math.round(state.lastRaiseTo * 3), acts.minRaiseTo, acts.maxRaiseTo),
         };
         setRaise(vals[b.dataset.quick]);
       });
