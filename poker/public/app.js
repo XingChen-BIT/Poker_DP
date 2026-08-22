@@ -83,6 +83,8 @@ socket.on('state', (s) => {
 /* ===== 入口 ===== */
 function showEntry() {
   state = null;
+  // 离开房间或被踢出时清理所有遮罩，避免旧弹窗覆盖入口页。
+  ['modal', 'manage-modal', 'info-modal', 'confirm-modal'].forEach((id) => $(id)?.classList.add('hidden'));
   $('topbar').classList.add('hidden');
   $('screen-entry').classList.remove('hidden');
   $('screen-lobby').classList.add('hidden');
@@ -149,6 +151,8 @@ $('btn-join').addEventListener('click', () => {
 /* ===== 大厅 ===== */
 function renderLobby() {
   showScreen('screen-lobby');
+  // 从游戏结束页回到原房间时，游戏结算弹窗必须同步关闭。
+  $('modal').classList.add('hidden');
   $('lobby-code').textContent = state.code;
   $('lobby-count').textContent = state.players.length;
   $('topbar-code').textContent = `房间码 ${state.code}`;
@@ -730,9 +734,9 @@ function renderModal() {
   }
 
   let actions = isHost
-    ? `<button class="btn btn-primary" id="btn-reset">回到大厅（重置筹码）</button>`
-    : `<button class="btn btn-ghost" id="btn-close">知道了</button>`;
-  actions += `<button class="btn btn-ghost" id="btn-leave-room">离开房间</button>`;
+    ? `<button class="btn btn-primary" id="btn-reset">留在原房间（再来一局）</button>`
+    : `<button class="btn btn-primary" id="btn-stay-room">留在原房间（等待房主）</button>`;
+  actions += `<button class="btn btn-ghost" id="btn-leave-room">退出房间，返回大厅</button>`;
 
   modal.classList.remove('hidden');
   modal.innerHTML = `<div class="modal-box">
@@ -742,10 +746,15 @@ function renderModal() {
   </div>`;
 
   $('btn-reset')?.addEventListener('click', () => {
+    // 先收起弹窗，再请求重置；成功广播后所有玩家都会回到原房间大厅。
+    modal.classList.add('hidden');
     socket.emit('room:reset', {}, (res) => { if (res && !res.ok) toast(res.error); });
   });
-  $('btn-close')?.addEventListener('click', () => modal.classList.add('hidden'));
-  $('btn-leave-room')?.addEventListener('click', () => leaveRoom());
+  $('btn-stay-room')?.addEventListener('click', () => modal.classList.add('hidden'));
+  $('btn-leave-room')?.addEventListener('click', () => {
+    modal.classList.add('hidden');
+    leaveRoom();
+  });
   playWin();
 }
 
@@ -861,6 +870,8 @@ function showConfirm(message, onOk) {
 }
 
 function leaveRoom() {
+  // 无论从哪个弹窗触发退出，都先移除遮罩，再清理房间身份。
+  ['modal', 'manage-modal', 'info-modal', 'confirm-modal'].forEach((id) => $(id)?.classList.add('hidden'));
   socket.emit('room:leave', {}, () => {});
   clearSession();
   session = null;
