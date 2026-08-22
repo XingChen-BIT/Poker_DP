@@ -302,3 +302,22 @@ test('亮牌结算公开参与比牌者的两张手牌与最大五张牌', () =>
     assert.ok(reveal.desc);
   }
 });
+
+test('房主增加筹码：非牌局阶段立即到账，牌局中延后至本手结算', () => {
+  const immediate = makeTable();
+  const before = immediate.players[1].chips;
+  assert.deepStrictEqual(immediate.grantChips('b', 500), { queued: false, amount: 500 });
+  assert.strictEqual(immediate.players[1].chips, before + 500);
+  assert.strictEqual(immediate.players[1].withdrawn, before + 500);
+
+  const queued = makeTable();
+  queued.status = 'playing';
+  queued.players.forEach((p) => { p.hole = Cs(['As', 'Kd']); });
+  const queuedBefore = queued.players[1].chips;
+  assert.deepStrictEqual(queued.grantChips('b', 500), { queued: true, amount: 500 });
+  assert.strictEqual(queued.players[1].chips, queuedBefore);
+  assert.strictEqual(queued.toPublicState('a').players[1].pendingAdminChips, 500);
+  queued.finishHand();
+  assert.strictEqual(queued.players[1].chips, queuedBefore + 500);
+  assert.strictEqual(queued.players[1].pendingAdminChips, 0);
+});

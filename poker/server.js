@@ -55,6 +55,15 @@ function getRoomOfSocket(socketId) {
   return { table, info };
 }
 
+// 同一个浏览器连接重复点击“创建/加入”时，直接返回原成员身份，避免生成重复座位。
+function existingMembership(socketId) {
+  const info = socketInfo.get(socketId);
+  if (!info) return null;
+  const table = rooms.get(info.code);
+  const player = table?.players.find((p) => p.id === info.playerId && !p.left);
+  return table && player ? { table, info } : null;
+}
+
 function broadcast(table) {
   for (const p of table.players) {
     const sid = playerSocket.get(`${table.code}:${p.id}`);
@@ -191,6 +200,8 @@ function sync(code) {
 io.on('connection', (socket) => {
   socket.on('room:create', (data, cb) => {
     try {
+      const existing = existingMembership(socket.id);
+      if (existing) return cb?.({ ok: true, code: existing.info.code, playerId: existing.info.playerId, alreadyJoined: true });
       const nickname = String(data?.nickname || '').trim() || '房主';
       const settings = {
         initialChips: clampInt(data?.initialChips, 10, 100000, 1000),
@@ -217,6 +228,8 @@ io.on('connection', (socket) => {
 
   socket.on('room:join', (data, cb) => {
     try {
+      const existing = existingMembership(socket.id);
+      if (existing) return cb?.({ ok: true, code: existing.info.code, playerId: existing.info.playerId, alreadyJoined: true });
       const code = String(data?.code || '').trim().toUpperCase();
       const nickname = String(data?.nickname || '').trim() || '玩家';
       const table = rooms.get(code);
@@ -315,6 +328,39 @@ io.on('connection', (socket) => {
     cb?.({ ok: true });
   });
 
+  socket.on('room:grant-chips', (data, cb) => {
+    const r = getRoomOfSocket(socket.id);
+    if (!r) return cb?.({ ok: false, error: '未加入房间' });
+    const { table, info } = r;
+    if (table.hostId !== info.playerId) return cb?.({ ok: false, error: '只有房主可以管理成员' });
+    const result = table.grantChips(String(data?.playerId || ''), 500);
+    if (!result) return cb?.({ ok: false, error: '成员不存在或已离开' });
+    sync(table.code);
+    cb?.({ ok: true, ...result });
+  });
+
+  socket.on('room:kick', (data, cb) => {
+    const r = getRoomOfSocket(socket.id);
+    if (!r) return cb?.({ ok: false, error: '未加入房间' });
+    const { table, info } = r;
+    if (table.hostId !== info.playerId) return cb?.({ ok: false, error: '只有房主可以管理成员' });
+    const targetId = String(data?.playerId || '');
+    if (targetId === info.playerId) return cb?.({ ok: false, error: '房主不能踢出自己' });
+    const target = table.players.find((p) => p.id === targetId && !p.left);
+    if (!target) return cb?.({ ok: false, error: '成员不存在或已离开' });
+    const targetKey = `${table.code}:${targetId}`;
+    const targetSocketId = playerSocket.get(targetKey);
+    table.leaveTable(targetId);
+    playerSocket.delete(targetKey);
+    if (targetSocketId) {
+      socketInfo.delete(targetSocketId);
+      io.to(targetSocketId).emit('room:kicked', { message: '你已被房主移出牌桌' });
+      io.sockets.sockets.get(targetSocketId)?.leave(table.code);
+    }
+    sync(table.code);
+    cb?.({ ok: true });
+  });
+
   socket.on('settings:update', (data, cb) => {
     const r = getRoomOfSocket(socket.id);
     if (!r) return cb?.({ ok: false, error: '未加入房间' });
@@ -330,6 +376,7 @@ io.on('connection', (socket) => {
     for (const p of table.players) {
       p.chips = s.initialChips;
       p.withdrawn = s.initialChips;
+      p.pendingAdminChips = 0;
     }
     broadcast(table);
     cb?.({ ok: true });

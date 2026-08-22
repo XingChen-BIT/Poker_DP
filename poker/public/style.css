@@ -138,6 +138,7 @@ input.invalid { border-color: var(--red); animation: shake .3s ease; }
 }
 .topbar-code:hover { border-color: var(--gold); }
 .btn-terminate { font-size: 12px; padding: 8px 10px; color: #e9b7b3; border-color: rgba(201, 81, 74, .4); }
+.btn-manage { font-size: 12px; padding: 8px 10px; white-space: nowrap; }
 .btn-info {
   width: 32px; height: 32px; flex: 0 0 32px; border-radius: 50%;
   border: 1px solid var(--line); background: rgba(20, 32, 26, .8);
@@ -531,6 +532,15 @@ input.invalid { border-color: var(--red); animation: shake .3s ease; }
 .settlement-countdown { color: var(--gold-2); font-weight: 700; font-variant-numeric: tabular-nums; }
 .modal-actions { display: flex; gap: 10px; }
 .modal-actions .btn { flex: 1; }
+.manage-modal-box { position: relative; max-width: 620px; }
+.manage-hint { color: var(--muted); font-size: 12px; line-height: 1.6; margin: -5px 0 14px; }
+.manage-members { display: flex; flex-direction: column; gap: 8px; }
+.manage-member { display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-2); }
+.manage-member-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.manage-member-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.manage-member-info > span { color: var(--muted); font-size: 11px; }
+.manage-pending { color: var(--gold-2); margin-left: 6px; }
+.manage-add, .manage-kick { flex: 0 0 auto; padding: 7px 10px; font-size: 12px; white-space: nowrap; }
 
 .info-modal-box { position: relative; max-width: 700px; text-align: left; }
 .info-modal-box > .modal-title { text-align: center; padding: 0 34px; }
@@ -559,11 +569,13 @@ input.invalid { border-color: var(--red); animation: shake .3s ease; }
 
 /* ===== 响应式 ===== */
 @media (max-width: 640px) {
+  html, body { height: auto; min-height: 100%; }
+  body { overflow-y: auto; }
   #topbar { gap: 5px; padding: 6px 8px; }
   #topbar .brand { display: none; }
   .topbar-status { min-width: 0; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #screen-game { padding: 50px 5px 0; }
-  #table-wrap { padding-top: 72px; }
+  #screen-game { display: block; height: auto; min-height: 100dvh; padding: 50px 5px 18px; }
+  #table-wrap { height: clamp(430px, 126vw, 540px); min-height: 430px; padding-top: 72px; }
   #table { aspect-ratio: 1.35 / 1; }
   .card { width: 34px; height: 47px; border-radius: 5px; }
   .card .rank { font-size: 13px; } .card .suit { font-size: 20px; }
@@ -583,10 +595,11 @@ input.invalid { border-color: var(--red); animation: shake .3s ease; }
   .brand-name { display: none; }
   .topbar-code { font-size: 11px; padding: 4px 7px; }
   .btn-terminate { font-size: 11px; padding: 6px 8px; }
+  .btn-manage { font-size: 11px; padding: 6px 8px; }
   #btn-leave { font-size: 11px; padding: 6px 8px; white-space: nowrap; }
   .btn-info { width: 28px; height: 28px; flex-basis: 28px; font-size: 16px; }
   .dock-toggle { display: inline-block; }
-  #dock { max-height: 46vh; overflow-y: auto; }
+  #dock { max-height: none; overflow: visible; margin-top: 8px; }
   #dock-main { flex-direction: column; gap: 8px; }
   .my-cards { order: 1; }
   .raise-range-hint { display: none; }
@@ -628,6 +641,8 @@ input.invalid { border-color: var(--red); animation: shake .3s ease; }
   .terms-table { grid-template-columns: 1fr; }
   .info-section { margin-top: 14px; }
   .info-section ol { font-size: 12px; }
+  .manage-member { padding: 8px; gap: 6px; }
+  .manage-add, .manage-kick { padding: 7px 8px; }
 }
 
 @media (max-width: 420px), (max-height: 680px) {

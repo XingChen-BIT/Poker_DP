@@ -123,6 +123,7 @@ class Table {
       sittingOut,
       left: false,
       withdrawn: this.settings.initialChips, // 从系统中提出的筹码总额（初始 + 历次补充）
+      pendingAdminChips: 0, // 牌局进行中由房主增加、待本手结束后到账的筹码
       // 每手牌状态
       hole: [],
       folded: false,
@@ -233,6 +234,26 @@ class Table {
     this.log.push({ text: `${p.nickname} 补充筹码 +${amt}`, type: 'rebuy' });
     this.version++;
     return true;
+  }
+
+  // 房主管理成员：固定增加筹码。牌局进行中延后至本手结束，避免影响当前边池。
+  grantChips(id, amount = 500) {
+    const p = this.players.find((player) => player.id === id && !player.left);
+    const chips = Math.floor(Number(amount));
+    if (!p || !Number.isFinite(chips) || chips <= 0) return null;
+    if (this.status === 'playing') {
+      p.pendingAdminChips += chips;
+      this.log.push({ text: `${p.nickname} 将在本手结束后获得 +${chips} 筹码`, type: 'rebuy' });
+      this.version++;
+      return { queued: true, amount: chips };
+    }
+    p.chips += chips;
+    p.withdrawn += chips;
+    p.busted = false;
+    p.sittingOut = false;
+    this.log.push({ text: `${p.nickname} 获得房主增加的 +${chips} 筹码`, type: 'rebuy' });
+    this.version++;
+    return { queued: false, amount: chips };
   }
 
   // 计算所有在场玩家的净收益排名（净收益 = 当前筹码 - 从系统提出的筹码）
@@ -708,6 +729,13 @@ class Table {
       .filter((p) => !p.left && p.hole.length === 2)
       .map((p) => p.seat);
     for (const p of this.players) {
+      if (!p.left && p.pendingAdminChips > 0) {
+        p.chips += p.pendingAdminChips;
+        p.withdrawn += p.pendingAdminChips;
+        this.log.push({ text: `${p.nickname} 的 +${p.pendingAdminChips} 筹码已到账`, type: 'rebuy' });
+        p.pendingAdminChips = 0;
+        p.busted = false;
+      }
       if (!p.busted && p.chips <= 0) p.busted = true;
     }
     // 破产玩家可补充筹码复活，因此仅当在场玩家只剩一人时才终局
@@ -781,6 +809,7 @@ class Table {
     for (const p of this.players) {
       p.chips = this.settings.initialChips;
       p.withdrawn = this.settings.initialChips;
+      p.pendingAdminChips = 0;
       p.busted = false;
       p.sittingOut = false;
       p.hole = [];
@@ -869,6 +898,7 @@ class Table {
           sittingOut: p.sittingOut,
           left: p.left,
           withdrawn: p.withdrawn,
+          pendingAdminChips: p.pendingAdminChips,
           folded: p.folded,
           allIn: p.allIn,
           lastAction: p.lastAction,

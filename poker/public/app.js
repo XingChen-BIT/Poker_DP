@@ -19,6 +19,7 @@ let lastBoardLen = 0;
 let lastHoleCount = 0;
 let audioCtx = null;
 let serverClockOffsetMs = 0;
+let entryRequestPending = false;
 
 function readSession() {
   try { return JSON.parse(localStorage.getItem('poker_session') || 'null'); }
@@ -56,6 +57,14 @@ socket.on('connect', () => {
   }
 });
 socket.on('disconnect', () => { if (state) toast('连接断开，正在重连…'); });
+socket.on('room:kicked', (data) => {
+  clearSession();
+  session = null;
+  state = null;
+  $('manage-modal').classList.add('hidden');
+  showEntry();
+  toast(data?.message || '你已被房主移出牌桌');
+});
 
 socket.on('state', (s) => {
   const prev = state;
@@ -79,6 +88,13 @@ function showEntry() {
   $('screen-lobby').classList.add('hidden');
   $('screen-game').classList.add('hidden');
   if (!$('inp-nickname').value) $('inp-nickname').value = localStorage.getItem('poker_nickname') || '';
+  setEntryPending(false);
+}
+
+function setEntryPending(pending) {
+  entryRequestPending = pending;
+  $('btn-create').disabled = pending;
+  $('btn-join').disabled = pending;
 }
 
 function showScreen(name) {
@@ -100,6 +116,8 @@ document.querySelectorAll('.tab').forEach((tab) => {
 });
 
 $('btn-create').addEventListener('click', () => {
+  if (entryRequestPending) return;
+  setEntryPending(true);
   const nickname = $('inp-nickname').value.trim() || '房主';
   localStorage.setItem('poker_nickname', nickname);
   socket.emit('room:create', {
@@ -108,19 +126,21 @@ $('btn-create').addEventListener('click', () => {
     smallBlind: $('inp-sb').value,
     bigBlind: $('inp-bb').value,
   }, (res) => {
-    if (!res.ok) return toast(res.error);
+    if (!res?.ok) { setEntryPending(false); return toast(res?.error || '创建失败，请重试'); }
     session = { code: res.code, playerId: res.playerId };
     saveSession(session);
   });
 });
 
 $('btn-join').addEventListener('click', () => {
+  if (entryRequestPending) return;
   const nickname = $('inp-nickname').value.trim() || '玩家';
   const code = $('inp-code').value.trim().toUpperCase();
   if (code.length < 4) return toast('请输入房间码');
+  setEntryPending(true);
   localStorage.setItem('poker_nickname', nickname);
   socket.emit('room:join', { nickname, code }, (res) => {
-    if (!res.ok) return toast(res.error);
+    if (!res?.ok) { setEntryPending(false); return toast(res?.error || '加入失败，请重试'); }
     session = { code: res.code, playerId: res.playerId };
     saveSession(session);
   });
@@ -136,6 +156,8 @@ function renderLobby() {
 
   const me = state.players[state.mySeat];
   const isHost = me && me.id === state.hostId;
+  $('btn-manage').classList.toggle('hidden', !isHost);
+  if (!$('manage-modal').classList.contains('hidden')) renderManageMembers();
 
   $('lobby-players').innerHTML = state.players.map((p) => {
     const host = p.id === state.hostId;
@@ -199,16 +221,17 @@ function renderGame() {
   bindLobbyEvents();
 
   // 顶栏
-  const sb = state.settings.smallBlind, bb = state.settings.bigBlind;
   $('topbar-status').textContent =
     state.status === 'playing'
-      ? `第 ${state.handNumber} 手 · ${STREET_CN[state.street] || ''} · 盲注 ${sb}/${bb}`
+      ? `第 ${state.handNumber} 手 · ${STREET_CN[state.street] || ''}`
       : state.status === 'gameOver' ? '游戏结束' : '本局结束';
   $('topbar-code').textContent = `房间码 ${state.code}`;
 
   const me = state.players[state.mySeat];
   const isHost = me && me.id === state.hostId;
   $('btn-terminate').classList.toggle('hidden', !isHost || state.status === 'lobby' || state.status === 'gameOver');
+  $('btn-manage').classList.toggle('hidden', !isHost);
+  if (!$('manage-modal').classList.contains('hidden')) renderManageMembers();
 
   renderSeats();
   renderBoard();
@@ -752,6 +775,51 @@ function confirmLeave() {
   showConfirm(msg, () => leaveRoom());
 }
 $('btn-leave').addEventListener('click', confirmLeave);
+
+function renderManageMembers() {
+  if (!state) return;
+  const members = state.players.filter((p) => !p.left);
+  $('manage-members').innerHTML = members.map((p) => {
+    const isHost = p.id === state.hostId;
+    const pending = p.pendingAdminChips > 0 ? `<span class="manage-pending">待到账 +${p.pendingAdminChips}</span>` : '';
+    return `<div class="manage-member">
+      <div class="manage-member-info">
+        <strong>${escapeHtml(p.nickname)}${p.seat === state.mySeat ? '（你）' : ''}</strong>
+        <span>现有筹码 ${formatK(p.chips)} ${pending}</span>
+      </div>
+      <button class="btn btn-ghost manage-add" data-manage-add="${escapeHtml(p.id)}" title="增加 500 筹码">＋ 500</button>
+      ${isHost ? '<span class="badge-host">房主</span>' : `<button class="btn btn-danger manage-kick" data-manage-kick="${escapeHtml(p.id)}">踢出</button>`}
+    </div>`;
+  }).join('');
+}
+
+$('btn-manage').addEventListener('click', () => {
+  renderManageMembers();
+  $('manage-modal').classList.remove('hidden');
+});
+$('btn-manage-close').addEventListener('click', () => $('manage-modal').classList.add('hidden'));
+$('manage-modal').addEventListener('click', (e) => {
+  if (e.target === $('manage-modal')) $('manage-modal').classList.add('hidden');
+  const addButton = e.target.closest('[data-manage-add]');
+  if (addButton && !addButton.disabled) {
+    addButton.disabled = true;
+    socket.emit('room:grant-chips', { playerId: addButton.dataset.manageAdd }, (res) => {
+      if (!res?.ok) { addButton.disabled = false; return toast(res?.error || '增加筹码失败'); }
+      toast(res.queued ? '已登记 +500，本手结束后到账' : '已增加 500 筹码');
+    });
+    return;
+  }
+  const kickButton = e.target.closest('[data-manage-kick]');
+  if (kickButton) {
+    const player = state?.players.find((p) => p.id === kickButton.dataset.manageKick);
+    showConfirm(`确定将 ${player?.nickname || '该成员'} 踢出牌桌吗？`, () => {
+      kickButton.disabled = true;
+      socket.emit('room:kick', { playerId: kickButton.dataset.manageKick }, (res) => {
+        if (!res?.ok) { kickButton.disabled = false; toast(res?.error || '踢出失败'); }
+      });
+    });
+  }
+});
 
 $('btn-terminate').addEventListener('click', () => {
   showConfirm('确定终止牌局，并对所有玩家进行最终排名结算吗？', () => {
